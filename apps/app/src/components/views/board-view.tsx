@@ -541,6 +541,7 @@ export function BoardView() {
         isMaximized={isMaximized}
         showProfilesOnly={showProfilesOnly}
         aiProfiles={aiProfiles}
+        allFeatures={hookFeatures}
       />
 
       {/* Agent Output Modal */}

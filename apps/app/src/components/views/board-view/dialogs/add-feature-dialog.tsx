@@ -20,7 +20,15 @@ import {
   FeatureImagePath as DescriptionImagePath,
   ImagePreviewMap,
 } from "@/components/ui/description-image-dropzone";
-import { MessageSquare, Settings2, FlaskConical } from "lucide-react";
+import {
+  MessageSquare,
+  Settings2,
+  FlaskConical,
+  Sparkles,
+  ChevronDown,
+} from "lucide-react";
+import { toast } from "sonner";
+import { getElectronAPI } from "@/lib/electron";
 import { modelSupportsThinking } from "@/lib/utils";
 import {
   useAppStore,
@@ -34,7 +42,14 @@ import {
   ThinkingLevelSelector,
   ProfileQuickSelect,
   TestingTabContent,
+  PrioritySelector,
 } from "../shared";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface AddFeatureDialogProps {
   open: boolean;
@@ -49,6 +64,7 @@ interface AddFeatureDialogProps {
     model: AgentModel;
     thinkingLevel: ThinkingLevel;
     branchName: string;
+    priority: number;
   }) => void;
   categorySuggestions: string[];
   branchSuggestions: string[];
@@ -79,11 +95,19 @@ export function AddFeatureDialog({
     model: "opus" as AgentModel,
     thinkingLevel: "none" as ThinkingLevel,
     branchName: "main",
+    priority: 2 as number, // Default to medium priority
   });
   const [newFeaturePreviewMap, setNewFeaturePreviewMap] =
     useState<ImagePreviewMap>(() => new Map());
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [descriptionError, setDescriptionError] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhancementMode, setEnhancementMode] = useState<
+    "improve" | "technical" | "simplify" | "acceptance"
+  >("improve");
+
+  // Get enhancement model from store
+  const { enhancementModel } = useAppStore();
 
   // Sync skipTests default when dialog opens
   useEffect(() => {
@@ -117,6 +141,7 @@ export function AddFeatureDialog({
       model: selectedModel,
       thinkingLevel: normalizedThinking,
       branchName: newFeature.branchName,
+      priority: newFeature.priority,
     });
 
     // Reset form
@@ -128,6 +153,7 @@ export function AddFeatureDialog({
       imagePaths: [],
       skipTests: defaultSkipTests,
       model: "opus",
+      priority: 2,
       thinkingLevel: "none",
       branchName: "main",
     });
@@ -146,6 +172,33 @@ export function AddFeatureDialog({
     }
   };
 
+  const handleEnhanceDescription = async () => {
+    if (!newFeature.description.trim() || isEnhancing) return;
+
+    setIsEnhancing(true);
+    try {
+      const api = getElectronAPI();
+      const result = await api.enhancePrompt?.enhance(
+        newFeature.description,
+        enhancementMode,
+        enhancementModel
+      );
+
+      if (result?.success && result.enhancedText) {
+        const enhancedText = result.enhancedText;
+        setNewFeature((prev) => ({ ...prev, description: enhancedText }));
+        toast.success("Description enhanced!");
+      } else {
+        toast.error(result?.error || "Failed to enhance description");
+      }
+    } catch (error) {
+      console.error("Enhancement failed:", error);
+      toast.error("Failed to enhance description");
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
   const handleModelSelect = (model: AgentModel) => {
     setNewFeature({
       ...newFeature,
@@ -156,7 +209,10 @@ export function AddFeatureDialog({
     });
   };
 
-  const handleProfileSelect = (model: AgentModel, thinkingLevel: ThinkingLevel) => {
+  const handleProfileSelect = (
+    model: AgentModel,
+    thinkingLevel: ThinkingLevel
+  ) => {
     setNewFeature({
       ...newFeature,
       model,
@@ -210,7 +266,10 @@ export function AddFeatureDialog({
           </TabsList>
 
           {/* Prompt Tab */}
-          <TabsContent value="prompt" className="space-y-4 overflow-y-auto">
+          <TabsContent
+            value="prompt"
+            className="space-y-4 overflow-y-auto cursor-default"
+          >
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <DescriptionImageDropZone
@@ -231,6 +290,58 @@ export function AddFeatureDialog({
                 autoFocus
                 error={descriptionError}
               />
+            </div>
+            <div className="flex w-fit items-center gap-3 select-none cursor-default">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-[200px] justify-between"
+                  >
+                    {enhancementMode === "improve" && "Improve Clarity"}
+                    {enhancementMode === "technical" && "Add Technical Details"}
+                    {enhancementMode === "simplify" && "Simplify"}
+                    {enhancementMode === "acceptance" &&
+                      "Add Acceptance Criteria"}
+                    <ChevronDown className="w-4 h-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onClick={() => setEnhancementMode("improve")}
+                  >
+                    Improve Clarity
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setEnhancementMode("technical")}
+                  >
+                    Add Technical Details
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setEnhancementMode("simplify")}
+                  >
+                    Simplify
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setEnhancementMode("acceptance")}
+                  >
+                    Add Acceptance Criteria
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleEnhanceDescription}
+                disabled={!newFeature.description.trim() || isEnhancing}
+                loading={isEnhancing}
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                Enhance with AI
+              </Button>
             </div>
             <div className="space-y-2">
               <Label htmlFor="category">Category (optional)</Label>
@@ -256,13 +367,26 @@ export function AddFeatureDialog({
                 data-testid="feature-branch-input"
               />
               <p className="text-xs text-muted-foreground">
-                Work will be done in this branch. A worktree will be created if needed.
+                Work will be done in this branch. A worktree will be created if
+                needed.
               </p>
             </div>
+
+            {/* Priority Selector */}
+            <PrioritySelector
+              selectedPriority={newFeature.priority}
+              onPrioritySelect={(priority) =>
+                setNewFeature({ ...newFeature, priority })
+              }
+              testIdPrefix="priority"
+            />
           </TabsContent>
 
           {/* Model Tab */}
-          <TabsContent value="model" className="space-y-4 overflow-y-auto">
+          <TabsContent
+            value="model"
+            className="space-y-4 overflow-y-auto cursor-default"
+          >
             {/* Show Advanced Options Toggle */}
             {showProfilesOnly && (
               <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border">
@@ -325,16 +449,17 @@ export function AddFeatureDialog({
           </TabsContent>
 
           {/* Testing Tab */}
-          <TabsContent value="testing" className="space-y-4 overflow-y-auto">
+          <TabsContent
+            value="testing"
+            className="space-y-4 overflow-y-auto cursor-default"
+          >
             <TestingTabContent
               skipTests={newFeature.skipTests}
               onSkipTestsChange={(skipTests) =>
                 setNewFeature({ ...newFeature, skipTests })
               }
               steps={newFeature.steps}
-              onStepsChange={(steps) =>
-                setNewFeature({ ...newFeature, steps })
-              }
+              onStepsChange={(steps) => setNewFeature({ ...newFeature, steps })}
             />
           </TabsContent>
         </Tabs>

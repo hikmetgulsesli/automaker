@@ -292,6 +292,7 @@ export interface Feature {
   thinkingLevel?: ThinkingLevel; // Thinking level for extended thinking (defaults to none)
   error?: string; // Error message if the agent errored during processing
   priority?: number; // Priority: 1 = high, 2 = medium, 3 = low
+  dependencies?: string[]; // Array of feature IDs this feature depends on
   // Worktree info - set when a feature is being worked on in an isolated git worktree
   worktreePath?: string; // Path to the worktree directory
   branchName?: string; // Name of the feature branch
@@ -421,6 +422,9 @@ export interface AppState {
 
   // Audio Settings
   muteDoneSound: boolean; // When true, mute the notification sound when agents complete (default: false)
+
+  // Enhancement Model Settings
+  enhancementModel: AgentModel; // Model used for feature enhancement (default: sonnet)
 
   // Project Analysis
   projectAnalysis: ProjectAnalysis | null;
@@ -609,6 +613,9 @@ export interface AppActions {
   // Audio Settings actions
   setMuteDoneSound: (muted: boolean) => void;
 
+  // Enhancement Model actions
+  setEnhancementModel: (model: AgentModel) => void;
+
   // AI Profile actions
   addAIProfile: (profile: Omit<AIProfile, "id">) => void;
   updateAIProfile: (id: string, updates: Partial<AIProfile>) => void;
@@ -748,6 +755,7 @@ const initialState: AppState = {
   showProfilesOnly: false, // Default to showing all options (not profiles only)
   keyboardShortcuts: DEFAULT_KEYBOARD_SHORTCUTS, // Default keyboard shortcuts
   muteDoneSound: false, // Default to sound enabled (not muted)
+  enhancementModel: "sonnet", // Default to sonnet for feature enhancement
   aiProfiles: DEFAULT_AI_PROFILES,
   projectAnalysis: null,
   isAnalyzing: false,
@@ -1392,6 +1400,9 @@ export const useAppStore = create<AppState & AppActions>()(
 
       // Audio Settings actions
       setMuteDoneSound: (muted) => set({ muteDoneSound: muted }),
+
+      // Enhancement Model actions
+      setEnhancementModel: (model) => set({ enhancementModel: model }),
 
       // AI Profile actions
       addAIProfile: (profile) => {
@@ -2226,6 +2237,7 @@ export const useAppStore = create<AppState & AppActions>()(
         showProfilesOnly: state.showProfilesOnly,
         keyboardShortcuts: state.keyboardShortcuts,
         muteDoneSound: state.muteDoneSound,
+        enhancementModel: state.enhancementModel,
         // Profiles and sessions
         aiProfiles: state.aiProfiles,
         chatSessions: state.chatSessions,
