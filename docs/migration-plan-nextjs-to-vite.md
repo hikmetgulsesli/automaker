@@ -1,9 +1,9 @@
 # Migration Plan: Next.js to Vite + Electron + TanStack
 
-> **Document Version**: 1.0
+> **Document Version**: 1.1
 > **Date**: December 2025
-> **Status**: Planning Phase
-> **Branch**: feature/worktrees (awaiting merge before implementation)
+> **Status**: Phase 2 Complete - Core Migration Done
+> **Branch**: refactor/frontend
 
 ---
 
@@ -1526,37 +1526,48 @@ export async function pickFile(options?: {
 
 **Goal**: Set up new build infrastructure without breaking existing functionality.
 
-- [ ] Create `vite.config.mts` with electron plugins
-- [ ] Create `electron/tsconfig.json` for Electron TypeScript
-- [ ] Convert `electron/main.js` → `electron/main.ts`
-- [ ] Convert `electron/preload.js` → `electron/preload.ts`
-- [ ] Implement IPC schema and type-safe handlers
-- [ ] Set up TanStack Router configuration
-- [ ] Port debug console from starter template
-- [ ] Create `index.html` for Vite entry
+- [x] Create `vite.config.mts` with electron plugins
+- [x] Create `electron/tsconfig.json` for Electron TypeScript
+- [x] Convert `electron/main.js` → `electron/main.ts`
+- [x] Convert `electron/preload.js` → `electron/preload.ts`
+- [ ] Implement IPC schema and type-safe handlers (deferred - using existing HTTP API)
+- [x] Set up TanStack Router configuration
+- [ ] Port debug console from starter template (deferred)
+- [x] Create `index.html` for Vite entry
 
 **Deliverables**:
-- Working Vite dev server
-- Type-safe Electron main process
-- Debug console functional
+- [x] Working Vite dev server
+- [x] TypeScript Electron main process
+- [ ] Debug console functional (deferred)
 
 ### Phase 2: Core Migration (Week 3-4)
 
 **Goal**: Replace Next.js with Vite while maintaining feature parity.
 
-- [ ] Create `src/renderer.ts` entry point
-- [ ] Create `src/App.tsx` root component
-- [ ] Set up TanStack Router with file-based routes
-- [ ] Port all views to route files
-- [ ] Update environment variables (`NEXT_PUBLIC_*` → `VITE_*`)
-- [ ] Verify Zustand stores work unchanged
-- [ ] Verify HTTP API client works unchanged
-- [ ] Test both Electron and Web builds
+- [x] Create `src/renderer.tsx` entry point
+- [x] Create `src/App.tsx` root component
+- [x] Set up TanStack Router with file-based routes
+- [x] Port all views to route files
+- [x] Update environment variables (`NEXT_PUBLIC_*` → `VITE_*`)
+- [x] Verify Zustand stores work unchanged
+- [x] Verify HTTP API client works unchanged
+- [x] Test Electron build
+- [ ] Test Web build (needs verification)
+
+**Additional completed tasks**:
+- [x] Remove all "use client" directives (not needed in Vite)
+- [x] Replace all `setCurrentView()` calls with TanStack Router `navigate()`
+- [x] Rename `apps/app` to `apps/ui`
+- [x] Update package.json scripts
+- [x] Configure memory history for Electron (no URL bar)
+- [x] Fix ES module imports (replace `require()` with `import`)
+- [x] Remove PostCSS config (using `@tailwindcss/vite` plugin)
 
 **Deliverables**:
-- All views accessible via TanStack Router
-- Both Electron and web builds functional
-- No regression in existing functionality
+- [x] All views accessible via TanStack Router
+- [x] Electron build functional
+- [ ] Web build functional (needs testing)
+- [x] No regression in existing functionality
 
 ### Phase 3: Component Refactoring (Week 5-7)
 
@@ -1740,11 +1751,15 @@ export default defineConfig({
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | Dec 2025 | Team | Initial migration plan |
+| 1.1 | Dec 2025 | Team | Phase 1 & 2 complete. Updated checkboxes, added completed tasks, noted deferred items |
 
 ---
 
 **Next Steps**:
-1. Review and approve this plan
-2. Wait for `feature/worktrees` branch merge
-3. Create `feature/vite-migration` branch
-4. Begin Phase 1 implementation
+1. ~~Review and approve this plan~~ ✅
+2. ~~Wait for `feature/worktrees` branch merge~~ ✅
+3. ~~Create migration branch~~ ✅ (refactor/frontend)
+4. ~~Complete Phase 1 implementation~~ ✅
+5. ~~Complete Phase 2 implementation~~ ✅
+6. **Current**: Verify web build works, then begin Phase 3 (Component Refactoring)
+7. Consider implementing deferred items: Debug console, IPC schema
