@@ -158,7 +158,7 @@ export function ClaudeUsagePopover() {
         {resetText && (
           <div className="mt-2 flex justify-end">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <Clock className="w-3 h-3" />
+              {title === "Session Usage" && <Clock className="w-3 h-3" />}
               {resetText}
             </p>
           </div>
