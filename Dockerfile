@@ -92,6 +92,10 @@ COPY --from=server-builder /app/node_modules ./node_modules
 # Create data and projects directories
 RUN mkdir -p /data /projects && chown automaker:automaker /data /projects
 
+# Configure git for mounted volumes (ownership mismatch between host/container)
+# Use --system so it's not overwritten by mounted user .gitconfig
+RUN git config --system --add safe.directory '*'
+
 # Switch to non-root user
 USER automaker
 
