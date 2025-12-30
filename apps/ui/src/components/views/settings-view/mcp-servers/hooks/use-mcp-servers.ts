@@ -47,6 +47,7 @@ export function useMCPServers() {
   const [isGlobalJsonEditOpen, setIsGlobalJsonEditOpen] = useState(false);
   const [globalJsonValue, setGlobalJsonValue] = useState('');
   const autoTestedServersRef = useRef<Set<string>>(new Set());
+  const pendingSyncServerIdsRef = useRef<Set<string>>(new Set());
 
   // Security warning dialog state
   const [isSecurityWarningOpen, setIsSecurityWarningOpen] = useState(false);
@@ -130,10 +131,12 @@ export function useMCPServers() {
     }
   }, []);
 
-  // Auto-test all enabled servers on mount
+  // Auto-test all enabled servers on mount (skip servers pending sync)
   useEffect(() => {
     const enabledServers = mcpServers.filter((s) => s.enabled !== false);
-    const serversToTest = enabledServers.filter((s) => !autoTestedServersRef.current.has(s.id));
+    const serversToTest = enabledServers.filter(
+      (s) => !autoTestedServersRef.current.has(s.id) && !pendingSyncServerIdsRef.current.has(s.id)
+    );
 
     if (serversToTest.length > 0) {
       // Mark all as being tested
@@ -276,8 +279,12 @@ export function useMCPServers() {
     // If editing an existing server, save directly (user already approved it)
     if (editingServer) {
       updateMCPServer(editingServer.id, serverData);
+      const syncSuccess = await syncSettingsToServer();
+      if (!syncSuccess) {
+        toast.error('Failed to save MCP server to disk');
+        return;
+      }
       toast.success('MCP server updated');
-      await syncSettingsToServer();
       handleCloseDialog();
       return;
     }
@@ -302,15 +309,71 @@ export function useMCPServers() {
     if (!pendingServerData) return;
 
     if (pendingServerData.type === 'add' && pendingServerData.serverData) {
+      // Get current server count to find the newly added one
+      const currentCount = mcpServers.length;
       addMCPServer(pendingServerData.serverData);
+
+      // Get the newly added server ID and mark it as pending sync
+      const newServers = useAppStore.getState().mcpServers;
+      const newServerId = newServers[currentCount]?.id;
+      if (newServerId) {
+        pendingSyncServerIdsRef.current.add(newServerId);
+      }
+
+      const syncSuccess = await syncSettingsToServer();
+
+      // Clear pending sync and trigger auto-test after sync
+      if (newServerId) {
+        pendingSyncServerIdsRef.current.delete(newServerId);
+        if (syncSuccess) {
+          const newServer = useAppStore.getState().mcpServers.find((s) => s.id === newServerId);
+          if (newServer && newServer.enabled !== false) {
+            testServer(newServer, true);
+          }
+        }
+      }
+
+      if (!syncSuccess) {
+        toast.error('Failed to save MCP server to disk');
+        setIsSecurityWarningOpen(false);
+        setPendingServerData(null);
+        return;
+      }
       toast.success('MCP server added');
-      await syncSettingsToServer();
       handleCloseDialog();
     } else if (pendingServerData.type === 'import' && pendingServerData.importServers) {
+      // Get current server count to find the newly added ones
+      const currentCount = mcpServers.length;
+
       for (const serverData of pendingServerData.importServers) {
         addMCPServer(serverData);
       }
-      await syncSettingsToServer();
+
+      // Get all newly added server IDs and mark them as pending sync
+      const newServers = useAppStore.getState().mcpServers.slice(currentCount);
+      const newServerIds = newServers.map((s) => s.id);
+      newServerIds.forEach((id) => pendingSyncServerIdsRef.current.add(id));
+
+      const syncSuccess = await syncSettingsToServer();
+
+      // Clear pending sync and trigger auto-test after sync
+      newServerIds.forEach((id) => pendingSyncServerIdsRef.current.delete(id));
+      if (syncSuccess) {
+        const latestServers = useAppStore.getState().mcpServers;
+        for (const id of newServerIds) {
+          const server = latestServers.find((s) => s.id === id);
+          if (server && server.enabled !== false) {
+            testServer(server, true);
+          }
+        }
+      }
+
+      if (!syncSuccess) {
+        toast.error('Failed to save MCP servers to disk');
+        setIsSecurityWarningOpen(false);
+        setPendingServerData(null);
+        return;
+      }
       const count = pendingServerData.importServers.length;
       toast.success(`Imported ${count} MCP server${count > 1 ? 's' : ''}`);
       setIsImportDialogOpen(false);
@@ -322,16 +385,89 @@ export function useMCPServers() {
   };
 
   const handleToggleEnabled = async (server: MCPServerConfig) => {
+    const wasDisabled = server.enabled === false;
     updateMCPServer(server.id, { enabled: !server.enabled });
-    await syncSettingsToServer();
-    toast.success(server.enabled ? 'Server disabled' : 'Server enabled');
+    const syncSuccess = await syncSettingsToServer();
+    if (!syncSuccess) {
+      toast.error('Failed to save settings to disk');
+      return;
+    }
+    toast.success(wasDisabled ? 'Server enabled' : 'Server disabled');
+
+    // Auto-test if server was just enabled
+    if (wasDisabled && syncSuccess) {
+      const updatedServer = useAppStore.getState().mcpServers.find((s) => s.id === server.id);
+      if (updatedServer) {
+        testServer(updatedServer, true);
+      }
+    }
   };
 
   const handleDelete = async (id: string) => {
     removeMCPServer(id);
-    await syncSettingsToServer();
+    const syncSuccess = await syncSettingsToServer();
     setDeleteConfirmId(null);
+    if (!syncSuccess) {
+      toast.error('Failed to save settings to disk');
+      return;
+    }
     toast.success('MCP server removed');
+  };
+
+  /** Helper to parse a server config into importable format */
+  const parseServerConfig = (
+    name: string,
+    serverConfig: Record<string, unknown>
+  ): Omit<MCPServerConfig, 'id'> | null => {
+    const serverData: Omit<MCPServerConfig, 'id'> = {
+      name,
+      type: (serverConfig.type as ServerType) || 'stdio',
+      enabled: serverConfig.enabled !== false,
+    };
+
+    if (serverConfig.description) {
+      serverData.description = serverConfig.description as string;
+    }
+
+    if (serverData.type === 'stdio') {
+      if (!serverConfig.command) {
+        console.warn(`Skipping ${name}: no command specified`);
+        return null;
+      }
+
+      const rawCommand = serverConfig.command as string;
+
+      // Support both formats:
+      // 1. Separate command/args: { "command": "npx", "args": ["-y", "package"] }
+      // 2. Inline args (Claude Desktop format): { "command": "npx -y package" }
+      if (Array.isArray(serverConfig.args) && serverConfig.args.length > 0) {
+        serverData.command = rawCommand;
+        serverData.args = serverConfig.args as string[];
+      } else if (rawCommand.includes(' ')) {
+        const parts = rawCommand.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [rawCommand];
+        serverData.command = parts[0];
+        if (parts.length > 1) {
+          serverData.args = parts.slice(1).map((arg) => arg.replace(/^["']|["']$/g, ''));
+        }
+      } else {
+        serverData.command = rawCommand;
+      }
+
+      if (typeof serverConfig.env === 'object' && serverConfig.env !== null) {
+        serverData.env = serverConfig.env as Record<string, string>;
+      }
+    } else {
+      if (!serverConfig.url) {
+        console.warn(`Skipping ${name}: no url specified`);
+        return null;
+      }
+      serverData.url = serverConfig.url as string;
+      if (typeof serverConfig.headers === 'object' && serverConfig.headers !== null) {
+        serverData.headers = serverConfig.headers as Record<string, string>;
+      }
+    }
+
+    return serverData;
   };
 
   const handleImportJson = async () => {
@@ -339,79 +475,61 @@ export function useMCPServers() {
       const parsed = JSON.parse(importJson);
 
       // Support both formats:
-      // 1. Claude Code format: { "mcpServers": { "name": { command, args, ... } } }
-      // 2. Direct format: { "name": { command, args, ... } }
+      // 1. Array format (new): { "mcpServers": [...] } or [...]
+      // 2. Object format (legacy): { "mcpServers": {...} } or { "name": {...} }
       const servers = parsed.mcpServers || parsed;
-
-      if (typeof servers !== 'object' || Array.isArray(servers)) {
-        toast.error('Invalid format: expected object with server configurations');
-        return;
-      }
 
       const serversToImport: Array<Omit<MCPServerConfig, 'id'>> = [];
       let skippedCount = 0;
 
-      for (const [name, config] of Object.entries(servers)) {
-        if (typeof config !== 'object' || config === null) continue;
+      if (Array.isArray(servers)) {
+        // Array format - each item has name property
+        for (const serverConfig of servers) {
+          if (typeof serverConfig !== 'object' || serverConfig === null) continue;
 
-        const serverConfig = config as Record<string, unknown>;
+          const config = serverConfig as Record<string, unknown>;
+          const name = config.name as string;
 
-        // Check if server with this name already exists
-        if (mcpServers.some((s) => s.name === name)) {
-          skippedCount++;
-          continue;
-        }
-
-        const serverData: Omit<MCPServerConfig, 'id'> = {
-          name,
-          type: (serverConfig.type as ServerType) || 'stdio',
-          enabled: true,
-        };
-
-        if (serverData.type === 'stdio') {
-          if (!serverConfig.command) {
-            console.warn(`Skipping ${name}: no command specified`);
+          if (!name) {
+            console.warn('Skipping server: no name specified');
             skippedCount++;
             continue;
           }
 
-          const rawCommand = serverConfig.command as string;
+          // Check if server with this name already exists
+          if (mcpServers.some((s) => s.name === name)) {
+            skippedCount++;
+            continue;
+          }
 
-          // Support both formats:
-          // 1. Separate command/args: { "command": "npx", "args": ["-y", "package"] }
-          // 2. Inline args (Claude Desktop format): { "command": "npx -y package" }
-          if (Array.isArray(serverConfig.args) && serverConfig.args.length > 0) {
-            // Args provided separately
-            serverData.command = rawCommand;
-            serverData.args = serverConfig.args as string[];
-          } else if (rawCommand.includes(' ')) {
-            // Parse inline command string - split on spaces but preserve quoted strings
-            const parts = rawCommand.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [rawCommand];
-            serverData.command = parts[0];
-            if (parts.length > 1) {
-              // Remove quotes from args
-              serverData.args = parts.slice(1).map((arg) => arg.replace(/^["']|["']$/g, ''));
-            }
+          const serverData = parseServerConfig(name, config);
+          if (serverData) {
+            serversToImport.push(serverData);
           } else {
-            serverData.command = rawCommand;
+            skippedCount++;
           }
+        }
+      } else if (typeof servers === 'object' && servers !== null) {
+        // Object format - name is the key
+        for (const [name, config] of Object.entries(servers)) {
+          if (typeof config !== 'object' || config === null) continue;
 
-          if (typeof serverConfig.env === 'object' && serverConfig.env !== null) {
-            serverData.env = serverConfig.env as Record<string, string>;
-          }
-        } else {
-          if (!serverConfig.url) {
-            console.warn(`Skipping ${name}: no url specified`);
+          // Check if server with this name already exists
+          if (mcpServers.some((s) => s.name === name)) {
             skippedCount++;
             continue;
           }
-          serverData.url = serverConfig.url as string;
-          if (typeof serverConfig.headers === 'object' && serverConfig.headers !== null) {
-            serverData.headers = serverConfig.headers as Record<string, string>;
+
+          const serverData = parseServerConfig(name, config as Record<string, unknown>);
+          if (serverData) {
+            serversToImport.push(serverData);
+          } else {
+            skippedCount++;
           }
         }
-
-        serversToImport.push(serverData);
+      } else {
+        toast.error('Invalid format: expected array or object with server configurations');
+        return;
       }
 
       if (skippedCount > 0) {
@@ -443,12 +561,20 @@ export function useMCPServers() {
   };
 
   const handleExportJson = () => {
-    const exportData: Record<string, Record<string, unknown>> = {};
+    // Export as array format with IDs preserved for full fidelity
+    const exportData: Array<Record<string, unknown>> = [];
 
     for (const server of mcpServers) {
       const serverConfig: Record<string, unknown> = {
+        id: server.id,
+        name: server.name,
         type: server.type || 'stdio',
+        enabled: server.enabled ?? true,
       };
+
+      if (server.description) {
+        serverConfig.description = server.description;
+      }
 
       if (server.type === 'stdio' || !server.type) {
         serverConfig.command = server.command;
@@ -460,7 +586,7 @@ export function useMCPServers() {
           serverConfig.headers = server.headers;
       }
 
-      exportData[server.name] = serverConfig;
+      exportData.push(serverConfig);
     }
 
     const json = JSON.stringify({ mcpServers: exportData }, null, 2);
@@ -558,8 +684,11 @@ export function useMCPServers() {
       }
 
       updateMCPServer(jsonEditServer.id, updateData);
-      await syncSettingsToServer();
-
+      const syncSuccess = await syncSettingsToServer();
+      if (!syncSuccess) {
+        toast.error('Failed to save settings to disk');
+        return;
+      }
       toast.success('Server configuration updated');
       setJsonEditServer(null);
       setJsonEditValue('');
@@ -569,20 +698,19 @@ export function useMCPServers() {
   };
 
   const handleOpenGlobalJsonEdit = () => {
-    // Build the full mcpServers config object
-    const exportData: Record<string, Record<string, unknown>> = {};
+    // Build the full mcpServers config as array with IDs preserved
+    const exportData: Array<Record<string, unknown>> = [];
 
     for (const server of mcpServers) {
       const serverConfig: Record<string, unknown> = {
+        id: server.id,
+        name: server.name,
         type: server.type || 'stdio',
+        enabled: server.enabled ?? true,
       };
 
       if (server.description) {
         serverConfig.description = server.description;
-      }
-
-      if (server.enabled === false) {
-        serverConfig.enabled = false;
       }
 
       if (server.type === 'stdio' || !server.type) {
@@ -596,97 +724,203 @@ export function useMCPServers() {
         }
       }
 
-      exportData[server.name] = serverConfig;
+      exportData.push(serverConfig);
     }
 
     setGlobalJsonValue(JSON.stringify({ mcpServers: exportData }, null, 2));
     setIsGlobalJsonEditOpen(true);
   };
 
+  /** Helper to save array format (with IDs preserved) */
+  const handleSaveGlobalJsonArray = async (
+    serversArray: Array<Record<string, unknown>>
+  ): Promise<boolean> => {
+    // Validate all servers first
+    for (const serverConfig of serversArray) {
+      const name = serverConfig.name as string;
+      if (!name || typeof name !== 'string') {
+        toast.error('Each server must have a name');
+        return false;
+      }
+
+      const serverType = (serverConfig.type as string) || 'stdio';
+      if (serverType === 'stdio') {
+        if (!serverConfig.command || typeof serverConfig.command !== 'string') {
+          toast.error(`Command is required for "${name}" (stdio)`);
+          return false;
+        }
+      } else if (serverType === 'sse' || serverType === 'http') {
+        if (!serverConfig.url || typeof serverConfig.url !== 'string') {
+          toast.error(`URL is required for "${name}" (${serverType})`);
+          return false;
+        }
+      }
+    }
+
+    // Create maps for matching: by ID first, then by name
+    const existingById = new Map(mcpServers.map((s) => [s.id, s]));
+    const existingByName = new Map(mcpServers.map((s) => [s.name, s]));
+    const processedIds = new Set<string>();
+
+    // Update or add servers
+    for (const serverConfig of serversArray) {
+      const serverType = (serverConfig.type as ServerType) || 'stdio';
+      const serverId = serverConfig.id as string | undefined;
+      const serverName = serverConfig.name as string;
+
+      const serverData: Omit<MCPServerConfig, 'id'> = {
+        name: serverName,
+        type: serverType,
+        description: (serverConfig.description as string) || undefined,
+        enabled: serverConfig.enabled !== false,
+      };
+
+      if (serverType === 'stdio') {
+        serverData.command = serverConfig.command as string;
+        if (Array.isArray(serverConfig.args)) {
+          serverData.args = serverConfig.args as string[];
+        }
+        if (typeof serverConfig.env === 'object' && serverConfig.env !== null) {
+          serverData.env = serverConfig.env as Record<string, string>;
+        }
+      } else {
+        serverData.url = serverConfig.url as string;
+        if (typeof serverConfig.headers === 'object' && serverConfig.headers !== null) {
+          serverData.headers = serverConfig.headers as Record<string, string>;
+        }
+      }
+
+      // Match by ID first (allows renaming), then by name (backward compatibility)
+      const existingServer = serverId ? existingById.get(serverId) : existingByName.get(serverName);
+
+      if (existingServer) {
+        updateMCPServer(existingServer.id, serverData);
+        processedIds.add(existingServer.id);
+      } else {
+        addMCPServer(serverData);
+        // Get the newly added server ID
+        const newServers = useAppStore.getState().mcpServers;
+        const newServer = newServers.find((s) => s.name === serverName);
+        if (newServer) {
+          processedIds.add(newServer.id);
+        }
+      }
+    }
+
+    // Remove servers that are no longer in the JSON
+    for (const server of mcpServers) {
+      if (!processedIds.has(server.id)) {
+        removeMCPServer(server.id);
+      }
+    }
+
+    return true;
+  };
+
+  /** Helper to save object format (legacy Claude Desktop format) */
+  const handleSaveGlobalJsonObject = async (
+    serversObject: Record<string, Record<string, unknown>>
+  ): Promise<boolean> => {
+    // Validate all servers first
+    for (const [name, config] of Object.entries(serversObject)) {
+      if (typeof config !== 'object' || config === null) {
+        toast.error(`Invalid config for "${name}"`);
+        return false;
+      }
+
+      const serverType = (config.type as string) || 'stdio';
+      if (serverType === 'stdio') {
+        if (!config.command || typeof config.command !== 'string') {
+          toast.error(`Command is required for "${name}" (stdio)`);
+          return false;
+        }
+      } else if (serverType === 'sse' || serverType === 'http') {
+        if (!config.url || typeof config.url !== 'string') {
+          toast.error(`URL is required for "${name}" (${serverType})`);
+          return false;
+        }
+      }
+    }
+
+    // Create a map of existing servers by name for updating
+    const existingByName = new Map(mcpServers.map((s) => [s.name, s]));
+    const processedNames = new Set<string>();
+
+    // Update or add servers
+    for (const [name, config] of Object.entries(serversObject)) {
+      const serverType = (config.type as ServerType) || 'stdio';
+
+      const serverData: Omit<MCPServerConfig, 'id'> = {
+        name,
+        type: serverType,
+        description: (config.description as string) || undefined,
+        enabled: config.enabled !== false,
+      };
+
+      if (serverType === 'stdio') {
+        serverData.command = config.command as string;
+        if (Array.isArray(config.args)) {
+          serverData.args = config.args as string[];
+        }
+        if (typeof config.env === 'object' && config.env !== null) {
+          serverData.env = config.env as Record<string, string>;
+        }
+      } else {
+        serverData.url = config.url as string;
+        if (typeof config.headers === 'object' && config.headers !== null) {
+          serverData.headers = config.headers as Record<string, string>;
+        }
+      }
+
+      const existing = existingByName.get(name);
+      if (existing) {
+        updateMCPServer(existing.id, serverData);
+      } else {
+        addMCPServer(serverData);
+      }
+      processedNames.add(name);
+    }
+
+    // Remove servers that are no longer in the JSON
+    for (const server of mcpServers) {
+      if (!processedNames.has(server.name)) {
+        removeMCPServer(server.id);
+      }
+    }
+
+    return true;
+  };
+
   const handleSaveGlobalJsonEdit = async () => {
     try {
       const parsed = JSON.parse(globalJsonValue);
 
-      // Support both formats
+      // Support both formats:
+      // 1. Array format (new, with IDs): { mcpServers: [...] } or [...]
+      // 2. Object format (legacy Claude Desktop): { mcpServers: {...} } or {...}
       const servers = parsed.mcpServers || parsed;
 
-      if (typeof servers !== 'object' || Array.isArray(servers)) {
-        toast.error('Invalid format: expected object with server configurations');
+      let success: boolean;
+      if (Array.isArray(servers)) {
+        // Array format - supports ID matching for renames
+        success = await handleSaveGlobalJsonArray(servers);
+      } else if (typeof servers === 'object' && servers !== null) {
+        // Object format - legacy Claude Desktop compatibility
+        success = await handleSaveGlobalJsonObject(servers);
+      } else {
+        toast.error('Invalid format: expected array or object with server configurations');
         return;
       }
 
-      // Validate all servers first
-      for (const [name, config] of Object.entries(servers)) {
-        if (typeof config !== 'object' || config === null) {
-          toast.error(`Invalid config for "${name}"`);
-          return;
-        }
-
-        const serverConfig = config as Record<string, unknown>;
-        const serverType = (serverConfig.type as string) || 'stdio';
-
-        if (serverType === 'stdio') {
-          if (!serverConfig.command || typeof serverConfig.command !== 'string') {
-            toast.error(`Command is required for "${name}" (stdio)`);
-            return;
-          }
-        } else if (serverType === 'sse' || serverType === 'http') {
-          if (!serverConfig.url || typeof serverConfig.url !== 'string') {
-            toast.error(`URL is required for "${name}" (${serverType})`);
-            return;
-          }
-        }
+      if (!success) {
+        return;
       }
 
-      // Create a map of existing servers by name for updating
-      const existingByName = new Map(mcpServers.map((s) => [s.name, s]));
-      const processedNames = new Set<string>();
-
-      // Update or add servers
-      for (const [name, config] of Object.entries(servers)) {
-        const serverConfig = config as Record<string, unknown>;
-        const serverType = (serverConfig.type as ServerType) || 'stdio';
-
-        const serverData: Omit<MCPServerConfig, 'id'> = {
-          name,
-          type: serverType,
-          description: (serverConfig.description as string) || undefined,
-          enabled: serverConfig.enabled !== false,
-        };
-
-        if (serverType === 'stdio') {
-          serverData.command = serverConfig.command as string;
-          if (Array.isArray(serverConfig.args)) {
-            serverData.args = serverConfig.args as string[];
-          }
-          if (typeof serverConfig.env === 'object' && serverConfig.env !== null) {
-            serverData.env = serverConfig.env as Record<string, string>;
-          }
-        } else {
-          serverData.url = serverConfig.url as string;
-          if (typeof serverConfig.headers === 'object' && serverConfig.headers !== null) {
-            serverData.headers = serverConfig.headers as Record<string, string>;
-          }
-        }
-
-        const existing = existingByName.get(name);
-        if (existing) {
-          updateMCPServer(existing.id, serverData);
-        } else {
-          addMCPServer(serverData);
-        }
-        processedNames.add(name);
+      const syncSuccess = await syncSettingsToServer();
+      if (!syncSuccess) {
+        toast.error('Failed to save settings to disk');
+        return;
       }
-
-      // Remove servers that are no longer in the JSON
-      for (const server of mcpServers) {
-        if (!processedNames.has(server.name)) {
-          removeMCPServer(server.id);
-        }
-      }
-
-      await syncSettingsToServer();
-
       toast.success('MCP servers configuration updated');
       setIsGlobalJsonEditOpen(false);
       setGlobalJsonValue('');
