@@ -18,19 +18,12 @@ export interface CodexRateLimitWindow {
   resetsAt: number;
 }
 
-export interface CodexCreditsSnapshot {
-  balance?: string;
-  unlimited?: boolean;
-  hasCredits?: boolean;
-}
-
 export type CodexPlanType = 'free' | 'plus' | 'pro' | 'team' | 'enterprise' | 'edu' | 'unknown';
 
 export interface CodexUsageData {
   rateLimits: {
     primary?: CodexRateLimitWindow;
     secondary?: CodexRateLimitWindow;
-    credits?: CodexCreditsSnapshot;
     planType?: CodexPlanType;
   } | null;
   lastUpdated: string;
@@ -106,9 +99,6 @@ export class CodexUsageService {
     return {
       rateLimits: {
         planType: 'unknown',
-        credits: {
-          hasCredits: true,
-        },
       },
       lastUpdated: new Date().toISOString(),
     };
@@ -159,10 +149,6 @@ export class CodexUsageService {
       const result: CodexUsageData = {
         rateLimits: {
           planType,
-          credits: {
-            hasCredits: true,
-            unlimited: planType !== 'free' && planType !== 'unknown',
-          },
         },
         lastUpdated: new Date().toISOString(),
       };
@@ -321,15 +307,9 @@ export class CodexUsageService {
         return null;
       }
 
-      const isFreePlan = planType === 'free';
-
       const result: CodexUsageData = {
         rateLimits: {
           planType,
-          credits: {
-            hasCredits: true,
-            unlimited: !isFreePlan,
-          },
         },
         lastUpdated: new Date().toISOString(),
       };

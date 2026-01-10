@@ -719,12 +719,6 @@ export type CodexPlanType =
   | 'edu'
   | 'unknown';
 
-export interface CodexCreditsSnapshot {
-  balance?: string;
-  unlimited?: boolean;
-  hasCredits?: boolean;
-}
-
 export interface CodexRateLimitWindow {
   limit: number;
   used: number;
@@ -738,7 +732,6 @@ export interface CodexUsage {
   rateLimits: {
     primary?: CodexRateLimitWindow;
     secondary?: CodexRateLimitWindow;
-    credits?: CodexCreditsSnapshot;
     planType?: CodexPlanType;
   } | null;
   lastUpdated: string;

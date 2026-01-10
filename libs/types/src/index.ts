@@ -40,7 +40,6 @@ export type {
   AppServerRateLimitsResponse,
   AppServerRateLimits,
   AppServerRateLimitWindow,
-  AppServerCredits,
   JsonRpcRequest,
   JsonRpcResponse,
 } from './codex-app-server.js';

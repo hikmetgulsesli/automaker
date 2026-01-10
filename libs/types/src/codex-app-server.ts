@@ -55,7 +55,6 @@ export interface AppServerRateLimitsResponse {
 export interface AppServerRateLimits {
   primary: AppServerRateLimitWindow | null;
   secondary: AppServerRateLimitWindow | null;
-  credits?: AppServerCredits;
   planType?: string;
 }
 
@@ -63,12 +62,6 @@ export interface AppServerRateLimitWindow {
   usedPercent: number;
   windowDurationMins: number;
   resetsAt: number;
-}
-
-export interface AppServerCredits {
-  hasCredits: boolean;
-  unlimited: boolean;
-  balance: string;
 }
 
 /**
