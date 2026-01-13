@@ -873,6 +873,8 @@ export interface AppActions {
   cycleNextProject: () => void; // Cycle forward through project history (E)
   clearProjectHistory: () => void; // Clear history, keeping only current project
   toggleProjectFavorite: (projectId: string) => void; // Toggle project favorite status
+  setProjectIcon: (projectId: string, icon: string | null) => void; // Set project icon (null to clear)
+  setProjectName: (projectId: string, name: string) => void; // Update project name
 
   // View actions
   setCurrentView: (view: ViewMode) => void;
@@ -1555,6 +1557,38 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         currentProject: {
           ...currentProject,
           isFavorite: !currentProject.isFavorite,
+        },
+      });
+    }
+  },
+
+  setProjectIcon: (projectId, icon) => {
+    const { projects, currentProject } = get();
+    const updatedProjects = projects.map((p) =>
+      p.id === projectId ? { ...p, icon: icon === null ? undefined : icon } : p
+    );
+    set({ projects: updatedProjects });
+    // Also update currentProject if it matches
+    if (currentProject?.id === projectId) {
+      set({
+        currentProject: {
+          ...currentProject,
+          icon: icon === null ? undefined : icon,
+        },
+      });
+    }
+  },
+
+  setProjectName: (projectId, name) => {
+    const { projects, currentProject } = get();
+    const updatedProjects = projects.map((p) => (p.id === projectId ? { ...p, name } : p));
+    set({ projects: updatedProjects });
+    // Also update currentProject if it matches
+    if (currentProject?.id === projectId) {
+      set({
+        currentProject: {
+          ...currentProject,
+          name,
         },
       });
     }

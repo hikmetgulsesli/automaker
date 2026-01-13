@@ -3104,6 +3104,7 @@ export interface Project {
   lastOpened?: string;
   theme?: string; // Per-project theme override (uses ThemeMode from app-store)
   isFavorite?: boolean; // Pin project to top of dashboard
+  icon?: string; // Lucide icon name for project identification
 }
 
 export interface TrashedProject extends Project {

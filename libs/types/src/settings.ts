@@ -293,6 +293,8 @@ export interface ProjectRef {
   theme?: string;
   /** Whether project is pinned to favorites on dashboard */
   isFavorite?: boolean;
+  /** Lucide icon name for project identification */
+  icon?: string;
 }
 
 /**

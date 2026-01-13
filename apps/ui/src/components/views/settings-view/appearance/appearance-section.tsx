@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { Label } from '@/components/ui/label';
-import { Palette, Moon, Sun } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Palette, Moon, Sun, Edit2 } from 'lucide-react';
 import { darkThemes, lightThemes } from '@/config/theme-options';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/store/app-store';
+import { IconPicker } from '@/components/layout/project-switcher/components/icon-picker';
 import type { Theme, Project } from '../shared/types';
 
 interface AppearanceSectionProps {
@@ -16,9 +20,32 @@ export function AppearanceSection({
   currentProject,
   onThemeChange,
 }: AppearanceSectionProps) {
+  const { setProjectIcon, setProjectName } = useAppStore();
   const [activeTab, setActiveTab] = useState<'dark' | 'light'>('dark');
+  const [editingProject, setEditingProject] = useState(false);
+  const [projectName, setProjectNameLocal] = useState(currentProject?.name || '');
+  const [projectIcon, setProjectIconLocal] = useState<string | null>(
+    (currentProject as any)?.icon || null
+  );
 
   const themesToShow = activeTab === 'dark' ? darkThemes : lightThemes;
+
+  const handleSaveProjectDetails = () => {
+    if (!currentProject) return;
+    if (projectName.trim() !== currentProject.name) {
+      setProjectName(currentProject.id, projectName.trim());
+    }
+    if (projectIcon !== (currentProject as any)?.icon) {
+      setProjectIcon(currentProject.id, projectIcon);
+    }
+    setEditingProject(false);
+  };
+
+  const handleCancelEdit = () => {
+    setProjectNameLocal(currentProject?.name || '');
+    setProjectIconLocal((currentProject as any)?.icon || null);
+    setEditingProject(false);
+  };
 
   return (
     <div
@@ -40,7 +67,68 @@ export function AppearanceSection({
           Customize the look and feel of your application.
         </p>
       </div>
-      <div className="p-6 space-y-4">
+      <div className="p-6 space-y-6">
+        {/* Project Details Section */}
+        {currentProject && (
+          <div className="space-y-4 pb-6 border-b border-border/50">
+            <div className="flex items-center justify-between">
+              <Label className="text-foreground font-medium">Project Details</Label>
+              {!editingProject && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditingProject(true)}
+                  className="h-8"
+                >
+                  <Edit2 className="w-3.5 h-3.5 mr-1.5" />
+                  Edit
+                </Button>
+              )}
+            </div>
+
+            {editingProject ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="project-name-settings">Project Name</Label>
+                  <Input
+                    id="project-name-settings"
+                    value={projectName}
+                    onChange={(e) => setProjectNameLocal(e.target.value)}
+                    placeholder="Enter project name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Project Icon</Label>
+                  <IconPicker
+                    selectedIcon={projectIcon}
+                    onSelectIcon={setProjectIconLocal}
+                  />
+                </div>
+
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" size="sm" onClick={handleCancelEdit}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSaveProjectDetails} disabled={!projectName.trim()}>
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-accent/30 border border-border/50">
+                  <div className="text-sm">
+                    <div className="font-medium text-foreground">{currentProject.name}</div>
+                    <div className="text-muted-foreground text-xs mt-0.5">{currentProject.path}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Theme Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <Label className="text-foreground font-medium">
