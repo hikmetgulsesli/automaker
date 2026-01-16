@@ -29,6 +29,7 @@ import {
 import { MCPServersSection } from './settings-view/mcp-servers';
 import { PromptCustomizationSection } from './settings-view/prompts';
 import { EventHooksSection } from './settings-view/event-hooks';
+import { ImportExportDialog } from './settings-view/components/import-export-dialog';
 import type { Project as SettingsProject, Theme } from './settings-view/shared/types';
 import type { Project as ElectronProject } from '@/lib/electron';
 
@@ -114,6 +115,7 @@ export function SettingsView() {
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showKeyboardMapDialog, setShowKeyboardMapDialog] = useState(false);
+  const [showImportExportDialog, setShowImportExportDialog] = useState(false);
 
   // Mobile navigation state - default to showing on desktop, hidden on mobile
   const [showNavigation, setShowNavigation] = useState(() => {
@@ -239,6 +241,7 @@ export function SettingsView() {
       <SettingsHeader
         showNavigation={showNavigation}
         onToggleNavigation={() => setShowNavigation(!showNavigation)}
+        onImportExportClick={() => setShowImportExportDialog(true)}
       />
 
       {/* Content Area with Sidebar */}
@@ -269,6 +272,9 @@ export function SettingsView() {
         project={currentProject}
         onConfirm={moveProjectToTrash}
       />
+
+      {/* Import/Export Settings Dialog */}
+      <ImportExportDialog open={showImportExportDialog} onOpenChange={setShowImportExportDialog} />
     </div>
   );
 }
