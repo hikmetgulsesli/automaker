@@ -702,10 +702,11 @@ describe('xml-extractor.ts', () => {
           </item>
           <item>second</item>
         </items>`;
-        // Note: multiline content in single element may not be captured due to . not matching newlines
+        // Multiline content is now captured with [\s\S]*? pattern
         const result = extractXmlElements(xml, 'item');
-        expect(result).toHaveLength(1); // Only matches single-line content
-        expect(result[0]).toBe('second');
+        expect(result).toHaveLength(2);
+        expect(result[0]).toBe('first');
+        expect(result[1]).toBe('second');
       });
 
       it('should handle consecutive elements without whitespace', () => {

@@ -110,7 +110,7 @@ export function extractXmlElements(
   const log = options.logger || logger;
   const values: string[] = [];
 
-  const regex = new RegExp(`<${tagName}>(.*?)<\\/${tagName}>`, 'g');
+  const regex = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'g');
   const matches = xmlContent.matchAll(regex);
 
   for (const match of matches) {
@@ -151,11 +151,11 @@ export function extractImplementedFeatures(
     const featureContent = featureMatch[1];
 
     // Extract name
-    const nameMatch = featureContent.match(/<name>(.*?)<\/name>/);
+    const nameMatch = featureContent.match(/<name>([\s\S]*?)<\/name>/);
     const name = nameMatch ? unescapeXml(nameMatch[1].trim()) : '';
 
     // Extract description
-    const descMatch = featureContent.match(/<description>(.*?)<\/description>/);
+    const descMatch = featureContent.match(/<description>([\s\S]*?)<\/description>/);
     const description = descMatch ? unescapeXml(descMatch[1].trim()) : '';
 
     // Extract file_locations if present
@@ -200,10 +200,9 @@ export function extractImplementedFeatureNames(
  * @returns XML string for the feature
  */
 export function featureToXml(feature: ImplementedFeature, indent: string = '  '): string {
-  const i1 = indent;
-  const i2 = indent + indent;
-  const i3 = indent + indent + indent;
-  const i4 = indent + indent + indent + indent;
+  const i2 = indent.repeat(2);
+  const i3 = indent.repeat(3);
+  const i4 = indent.repeat(4);
 
   let xml = `${i2}<feature>
 ${i3}<name>${escapeXml(feature.name)}</name>
