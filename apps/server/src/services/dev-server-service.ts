@@ -40,8 +40,8 @@ export interface DevServerInfo {
 }
 
 // Port allocation starts at 3001 to avoid conflicts with common dev ports
-const BASE_PORT = 3001;
-const MAX_PORT = 3099; // Safety limit
+const BASE_PORT = 9051;
+const MAX_PORT = 9099; // Safety limit
 
 // Common livereload ports that may need cleanup when stopping dev servers
 const LIVERELOAD_PORTS = [35729, 35730, 35731] as const;
