@@ -1,0 +1,15 @@
+services:
+  server:
+    volumes:
+      # Your projects
+      - /projects/project1:/projects/project1
+      - /projects/project2:/projects/project2
+
+      # Authentication configs
+      - ~/.claude:/home/automaker/.claude
+      - ~/.config/gh:/home/automaker/.config/gh
+      - ~/.gitconfig:/home/automaker/.gitconfig:ro
+    environment:
+      - GH_TOKEN=${GH_TOKEN}
+      - VITE_SERVER_URL=${VITE_SERVER_URL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
