@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Frontend UI
+  # Frontend UI (Arayüz)
   ui:
     build:
       context: .
@@ -17,15 +17,16 @@ services:
     depends_on:
       - server
 
-  # Backend API Server
+  # Backend Server (Sunucu)
   server:
     build:
       context: .
       dockerfile: Dockerfile
       target: server
       args:
-        - UID=1000
-        - GID=1000
+        # Dockerfile varsayılanı olan 1001 ID'sini kullanıyoruz (Garanti olsun)
+        - UID=1001
+        - GID=1001
     container_name: automaker-server
     restart: unless-stopped
     ports:
@@ -33,49 +34,36 @@ services:
     environment:
       - VITE_SERVER_URL=${VITE_SERVER_URL}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # EKLENDİ: GitHub Token'ı içeri aktarıyoruz
       - GH_TOKEN=${GH_TOKEN}
-      - GITHUB_TOKEN=${GH_TOKEN}
-      
-      # Diğer ayarlar
-      - CLAUDE_OAUTH_CREDENTIALS=${CLAUDE_OAUTH_CREDENTIALS:-}
-      - CURSOR_AUTH_TOKEN=${CURSOR_AUTH_TOKEN:-}
-      - AUTOMAKER_API_KEY=${AUTOMAKER_API_KEY:-}
       - ALLOWED_ROOT_DIRECTORY=/projects
       - DATA_DIR=/data
+      - HOME=/home/automaker
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3007}
       - IS_CONTAINERIZED=true
-      - HOME=/home/automaker
     volumes:
+      # --- KALICI VERİ DEPOLARI (VOLUMES) ---
+      
+      # 1. Global Ayarlar (Settings, Modeller burada tutulur)
       - automaker-data:/data
+      
+      # 2. Proje Dosyaları
       - automaker-projects:/projects
       
-      # Login bilgilerini tutan klasörler (Eksikler tamamlandı)
-      - automaker-claude-config:/home/automaker/.claude
-      - automaker-cursor-config:/home/automaker/.cursor
-      
-      # GitHub CLI Config (GitHub login bilgilerini tutar)
-      - automaker-gh-config:/home/automaker/.config/gh
-      
-      # OpenCode verileri
+      # 3. OpenCode Giriş Bilgileri (Burası silinirse giriş düşer)
       - automaker-opencode-data:/home/automaker/.local/share/opencode
       - automaker-opencode-config:/home/automaker/.config/opencode
-      - automaker-opencode-cache:/home/automaker/.cache/opencode
+      
+      # 4. Diğer Araçların Giriş Bilgileri
+      - automaker-claude-config:/home/automaker/.claude
+      - automaker-cursor-config:/home/automaker/.cursor
+      - automaker-gh-config:/home/automaker/.config/gh
 
+# Volume Tanımları
 volumes:
   automaker-data:
-    name: automaker-data
   automaker-projects:
-    name: automaker-projects
-  automaker-claude-config:
-    name: automaker-claude-config
-  automaker-cursor-config:
-    name: automaker-cursor-config
-  automaker-gh-config:  # Yeni volume
-    name: automaker-gh-config
   automaker-opencode-data:
-    name: automaker-opencode-data
   automaker-opencode-config:
-    name: automaker-opencode-config
-  automaker-opencode-cache:
-    name: automaker-opencode-cache
+  automaker-claude-config:
+  automaker-cursor-config:
+  automaker-gh-config:
