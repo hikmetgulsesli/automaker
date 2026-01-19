@@ -15,6 +15,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: ui
+      args:
+        - VITE_SERVER_URL=${VITE_SERVER_URL}
     container_name: automaker-ui
     restart: unless-stopped
     ports:
@@ -38,6 +40,7 @@ services:
     ports:
       - '3008:3008'
     environment:
+      - VITE_SERVER_URL=${VITE_SERVER_URL}
       # Optional - Anthropic API key
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
