@@ -7,9 +7,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: ui
-      # BURASI ÖNEMLİ: UI build edilirken backend adresini içine alacak
       args:
         - VITE_SERVER_URL=${VITE_SERVER_URL}
+        - VITE_HOSTNAME=autoserver.setrox.com.tr
     container_name: automaker-ui
     restart: unless-stopped
     ports:
@@ -24,7 +24,6 @@ services:
       dockerfile: Dockerfile
       target: server
       args:
-        # Bu değerler Dockerfile içindeki kullanıcı ID'si ile eşleşmeli
         - UID=1000
         - GID=1000
     container_name: automaker-server
@@ -32,9 +31,13 @@ services:
     ports:
       - '3008:3008'
     environment:
-      # Build sırasında verilen değişkeni runtime'da da veriyoruz
-      - VITE_SERVER_URL=${VITE_SERVER_URL} 
+      - VITE_SERVER_URL=${VITE_SERVER_URL}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # EKLENDİ: GitHub Token'ı içeri aktarıyoruz
+      - GH_TOKEN=${GH_TOKEN}
+      - GITHUB_TOKEN=${GH_TOKEN}
+      
+      # Diğer ayarlar
       - CLAUDE_OAUTH_CREDENTIALS=${CLAUDE_OAUTH_CREDENTIALS:-}
       - CURSOR_AUTH_TOKEN=${CURSOR_AUTH_TOKEN:-}
       - AUTOMAKER_API_KEY=${AUTOMAKER_API_KEY:-}
@@ -42,26 +45,23 @@ services:
       - DATA_DIR=/data
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3007}
       - IS_CONTAINERIZED=true
-      # Home dizini doğru tanımlanmalı ki CLI araçları oraya baksın
       - HOME=/home/automaker
     volumes:
-      # GENEL VERİLER (Projeler, ayarlar vs.)
       - automaker-data:/data
       - automaker-projects:/projects
       
-      # LOGIN BİLGİLERİNİ TUTAN KRİTİK KLASÖRLER
-      # Claude giriş bilgileri
+      # Login bilgilerini tutan klasörler (Eksikler tamamlandı)
       - automaker-claude-config:/home/automaker/.claude
-      
-      # Cursor giriş bilgileri
       - automaker-cursor-config:/home/automaker/.cursor
       
-      # OpenCode giriş ve cache bilgileri
+      # GitHub CLI Config (GitHub login bilgilerini tutar)
+      - automaker-gh-config:/home/automaker/.config/gh
+      
+      # OpenCode verileri
       - automaker-opencode-data:/home/automaker/.local/share/opencode
       - automaker-opencode-config:/home/automaker/.config/opencode
       - automaker-opencode-cache:/home/automaker/.cache/opencode
 
-# Volume Tanımları (Verilerin saklandığı depolar)
 volumes:
   automaker-data:
     name: automaker-data
@@ -71,6 +71,8 @@ volumes:
     name: automaker-claude-config
   automaker-cursor-config:
     name: automaker-cursor-config
+  automaker-gh-config:  # Yeni volume
+    name: automaker-gh-config
   automaker-opencode-data:
     name: automaker-opencode-data
   automaker-opencode-config:
