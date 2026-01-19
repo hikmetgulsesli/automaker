@@ -31,7 +31,7 @@ services:
       args:
         # Match container user to host user for mounted volume permissions
         # Override with: UID=$(id -u) GID=$(id -g) docker-compose build
-        - VITE_SERVER_URL=https://autoserver.setrox.com.tr
+        - VITE_SERVER_URL=${VITE_SERVER_URL}
         UID: ${UID:-1001}
         GID: ${GID:-1001}
     container_name: automaker-server
@@ -39,8 +39,7 @@ services:
     ports:
       - '3008:3008'
     environment:
-      - VITE_SERVER_URL=https://autoserver.setrox.com.tr
-      - CORS_ORIGIN=https://automaker.setrox.com.tr
+      - VITE_SERVER_URL=${VITE_SERVER_URL}
       # Optional - Anthropic API key
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
